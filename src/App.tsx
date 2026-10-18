@@ -127,12 +127,14 @@ function App() {
 
   const activeWorkspace = demoWorkspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? demoWorkspaces[0]
   const activeWorkspaceRoutes = useMemo(
-    () => activeWorkspace.routes.map((route) =>
-      routeOverrides.find((override) => override.workspaceId === activeWorkspace.id && override.id === route.id) ?? route,
-    ),
-    [activeWorkspace, routeOverrides],
+    () => [
+      ...userRoutes.filter((route) => route.workspaceId === activeWorkspace.id),
+      ...activeWorkspace.routes.map((route) =>
+        routeOverrides.find((override) => override.workspaceId === activeWorkspace.id && override.id === route.id) ?? route,
+      ),
+    ],
+    [activeWorkspace, routeOverrides, userRoutes],
   )
-  const workspaceUserRoutes = userRoutes.filter((route) => route.workspaceId === activeWorkspace.id)
 
   const selectWorkspace = (workspaceId: string) => {
     setActiveWorkspaceId(workspaceId)
@@ -252,7 +254,7 @@ function App() {
               onClick={() => selectWorkspace(workspace.id)}
             >
               <strong>{workspace.name}</strong>
-              <small>{workspace.routes.length} common routes</small>
+              <small>{workspace.routes.length + userRoutes.filter((route) => route.workspaceId === workspace.id).length} routes</small>
             </button>
           ))}
         </nav>
@@ -297,23 +299,6 @@ function App() {
             )}
           </nav>
         </section>
-
-        {workspaceUserRoutes.length > 0 && (
-          <nav className="sidebar-saved-routes" aria-label="Your saved routes">
-            <h2 className="sidebar-route-heading">YOUR ROUTES</h2>
-            {workspaceUserRoutes.map((route) => (
-              <button
-                className={`workspace-route${selectedRoute?.id === route.id ? ' is-selected' : ''}`}
-                key={route.id}
-                type="button"
-                onClick={() => openRoute(route)}
-              >
-                <strong>{route.farm} to {route.customer}</strong>
-                <small>{getRouteProductLabel(route)}{route.distanceMiles > 0 ? ` · ${route.distanceMiles.toFixed(1)} mi` : ''}</small>
-              </button>
-            ))}
-          </nav>
-        )}
 
         <footer className="sidebar-note">
           <span className="status-dot" aria-hidden="true" />
@@ -364,7 +349,7 @@ function App() {
             </header>
 
             <section className="overview-strip" aria-label="Route summary">
-              <SummaryMetric label="ROUTES IN WORKSPACE" value={String(activeWorkspace.routes.length).padStart(2, '0')} />
+              <SummaryMetric label="ROUTES IN WORKSPACE" value={String(activeWorkspaceRoutes.length).padStart(2, '0')} />
               <SummaryMetric label="TRIPS THIS MONTH" value={String(monthlyTrips)} />
               <SummaryMetric label="AVG. ROUND TRIP" value={`${averageDistance} mi`} />
               <div className="overview-caption">FICTIONAL OREGON OPERATIONS</div>
