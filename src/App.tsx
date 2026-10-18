@@ -81,12 +81,20 @@ function getRouteTotals(route: SupplyRoute) {
   }
 }
 
+function getRouteProductLabel(route: SupplyRoute) {
+  const productNames = route.products?.map((product) => product.product).filter(Boolean)
+  if (productNames?.length) return productNames.join(', ')
+  return route.product || 'Product not specified'
+}
+
 function App() {
   const [selectedRoute, setSelectedRoute] = useState<SupplyRoute | null>(null)
   const [userRoutes, setUserRoutes] = useState<SupplyRoute[]>(readUserRoutes)
   const [routeOverrides, setRouteOverrides] = useState<SupplyRoute[]>(readRouteOverrides)
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(defaultWorkspaceId)
   const [activeView, setActiveView] = useState<'directory' | 'create' | 'edit' | 'detail'>('directory')
+  const [editReturnView, setEditReturnView] = useState<'directory' | 'detail'>('directory')
+  const [editReturnRoute, setEditReturnRoute] = useState<SupplyRoute | null>(null)
   const [routeFilter, setRouteFilter] = useState<RouteFilter>('frequency')
   const [showNotice, setShowNotice] = useState(true)
   const noticeRef = useRef<HTMLDivElement>(null)
@@ -139,8 +147,21 @@ function App() {
   }
 
   const editRoute = (route: SupplyRoute) => {
+    const returningToDetail = activeView === 'detail'
+    setEditReturnView(returningToDetail ? 'detail' : 'directory')
+    setEditReturnRoute(returningToDetail ? route : null)
     setSelectedRoute(route)
     setActiveView('edit')
+  }
+
+  const backFromEdit = () => {
+    if (editReturnView === 'detail' && editReturnRoute) {
+      setSelectedRoute(editReturnRoute)
+      setActiveView('detail')
+      return
+    }
+
+    openDirectory()
   }
 
   const openDirectory = () => {
@@ -266,7 +287,7 @@ function App() {
                       onClick={() => openRoute(route)}
                     >
                       <strong>{route.farm} to {route.customer}</strong>
-                      <small>{route.product} · {route.tripsPerMonth} trips / mo</small>
+                      <small>{getRouteProductLabel(route)} · {route.tripsPerMonth} trips / mo</small>
                     </button>
                   </li>
                 ))}
@@ -288,7 +309,7 @@ function App() {
                 onClick={() => openRoute(route)}
               >
                 <strong>{route.farm} to {route.customer}</strong>
-                <small>{route.product || 'Route'}{route.distanceMiles > 0 ? ` · ${route.distanceMiles.toFixed(1)} mi` : ''}</small>
+                <small>{getRouteProductLabel(route)}{route.distanceMiles > 0 ? ` · ${route.distanceMiles.toFixed(1)} mi` : ''}</small>
               </button>
             ))}
           </nav>
@@ -316,6 +337,7 @@ function App() {
             key={activeView === 'edit' ? selectedRoute?.id ?? 'edit-route' : 'new-route'}
             accessToken={mapboxAccessToken}
             initialRoute={activeView === 'edit' ? selectedRoute ?? undefined : undefined}
+            onBack={backFromEdit}
             onCancel={openDirectory}
             onSave={saveRoute}
           />
@@ -448,7 +470,7 @@ function RouteCard({ route, rank, onSelect, onEdit }: { route: SupplyRoute; rank
           <span>{route.destination}</span>
         </span>
         <span className="route-tags">
-          <span>{route.product}</span>
+          <span>{getRouteProductLabel(route)}</span>
           <span>{route.tripsPerMonth} trips / mo</span>
           <span>{route.distanceMiles.toFixed(1)} mi round trip</span>
           <span>{route.vehicle}</span>
@@ -563,20 +585,41 @@ function RouteDetail({ route, accessToken, onBack, onEdit }: { route: SupplyRout
         </dl>
       </section>
 
-      {route.source === 'user' && (
+      {(route.source === 'user' || route.products?.length) && (
         <dl className="route-detail-facts">
-          {route.productCategory && <div><dt>PRODUCT CATEGORY</dt><dd>{route.productCategory}</dd></div>}
-          <div><dt>PRODUCT</dt><dd>{route.product || 'Not specified'}</dd></div>
-          {route.productDescription && <div><dt>VARIETY / GRADE</dt><dd>{route.productDescription}</dd></div>}
-          {route.productQuantity !== undefined && route.productUnit && (
-            <div><dt>PRODUCT QUANTITY</dt><dd className="numeric">{route.productQuantity.toLocaleString()} {route.productUnit}</dd></div>
+          {route.products && route.products.length > 0 ? (
+            <div className="route-products-fact">
+              <dt>PRODUCTS IN LOAD</dt>
+              <dd>
+                <ul className="route-product-list">
+                  {route.products.map((product) => (
+                    <li key={product.id}>
+                      <strong>{product.product}</strong>
+                      <span>{product.quantity.toLocaleString()} {product.unit} · {currency.format(product.unitCost)} / {product.unit} · {currency.format(product.totalCost)} total</span>
+                      <small>{[product.category, product.description, product.packaging, product.handling].filter(Boolean).join(' · ')}</small>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          ) : (
+            <>
+              {route.productCategory && <div><dt>PRODUCT CATEGORY</dt><dd>{route.productCategory}</dd></div>}
+              <div><dt>PRODUCT</dt><dd>{route.product || 'Not specified'}</dd></div>
+              {route.productDescription && <div><dt>VARIETY / GRADE</dt><dd>{route.productDescription}</dd></div>}
+              {route.productQuantity !== undefined && route.productUnit && (
+                <div><dt>PRODUCT QUANTITY</dt><dd className="numeric">{route.productQuantity.toLocaleString()} {route.productUnit}</dd></div>
+              )}
+              {route.productUnitCost !== undefined && (
+                <div><dt>COST PER {route.productUnit?.toUpperCase() || 'UNIT'}</dt><dd className="numeric">{currency.format(route.productUnitCost)}</dd></div>
+              )}
+              {route.productPackaging && <div><dt>PACKAGING</dt><dd>{route.productPackaging}</dd></div>}
+              {route.productHandling && <div><dt>HANDLING PROFILE</dt><dd>{route.productHandling}</dd></div>}
+            </>
           )}
-          {route.productUnitCost !== undefined && (
-            <div><dt>COST PER {route.productUnit?.toUpperCase() || 'UNIT'}</dt><dd className="numeric">{currency.format(route.productUnitCost)}</dd></div>
+          {(route.source === 'user' || route.shipmentCost !== undefined) && (
+            <div><dt>ENTERED SHIPMENT COST</dt><dd className="numeric">{currency.format(route.shipmentCost ?? 0)}</dd></div>
           )}
-          {route.productPackaging && <div><dt>PACKAGING</dt><dd>{route.productPackaging}</dd></div>}
-          {route.productHandling && <div><dt>HANDLING PROFILE</dt><dd>{route.productHandling}</dd></div>}
-          <div><dt>ENTERED SHIPMENT COST</dt><dd className="numeric">{currency.format(route.shipmentCost ?? 0)}</dd></div>
         </dl>
       )}
 

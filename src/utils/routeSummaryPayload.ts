@@ -8,6 +8,7 @@ export function createRouteSummaryPayload(route: SupplyRoute) {
     customer: route.customer,
     origin: route.origin,
     destination: route.destination,
+    products: route.products?.map((product) => ({ ...product })) ?? [],
     productCategory: route.productCategory ?? null,
     product: route.product ?? null,
     productDescription: route.productDescription ?? null,

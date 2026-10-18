@@ -26,6 +26,7 @@ export interface SupplyRoute {
   enteredRevenue: number
   calculatedRevenue: number
   source?: 'demo' | 'user'
+  products?: ShipmentProduct[]
   productCategory?: string
   product?: string
   productDescription?: string
@@ -49,6 +50,19 @@ export interface SupplyRoute {
     goods: number
     other: number
   }
+}
+
+export interface ShipmentProduct {
+  id: string
+  category: string
+  product: string
+  description: string
+  quantity: number
+  unit: string
+  unitCost: number
+  totalCost: number
+  packaging: string
+  handling: string
 }
 
 export interface DemoWorkspace {

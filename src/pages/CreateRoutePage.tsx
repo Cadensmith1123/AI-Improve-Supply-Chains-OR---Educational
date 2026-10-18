@@ -1,20 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import RouteMap from '../components/maps/RouteMap'
-import type { SupplyRoute } from '../data/routes'
+import type { ShipmentProduct, SupplyRoute } from '../data/routes'
 import { oregonProductCategories } from '../data/oregonProductCatalog'
 import { getMapboxRoute, type RoutePreview } from '../utils/mapbox'
 
 interface RouteFormValues {
   origin: string
   destination: string
-  productCategory: string
-  product: string
-  productDescription: string
-  productUnit: string
-  productQuantity: string
-  productUnitCost: string
-  productPackaging: string
-  productHandling: string
   shipmentCost: string
   distanceMiles: string
   driveMinutes: string
@@ -36,17 +28,33 @@ interface RouteFormValues {
   other: string
 }
 
+interface ProductLineValues {
+  categoryId: string
+  product: string
+  description: string
+  unit: string
+  quantity: string
+  unitCost: string
+  packaging: string
+  handling: string
+}
+
+function createBlankProductLine(): ProductLineValues {
+  return {
+    categoryId: '',
+    product: '',
+    description: '',
+    unit: '',
+    quantity: '',
+    unitCost: '',
+    packaging: '',
+    handling: '',
+  }
+}
+
 const initialValues: RouteFormValues = {
   origin: '',
   destination: '',
-  productCategory: '',
-  product: '',
-  productDescription: '',
-  productUnit: '',
-  productQuantity: '',
-  productUnitCost: '',
-  productPackaging: '',
-  productHandling: '',
   shipmentCost: '',
   distanceMiles: '',
   driveMinutes: '',
@@ -71,25 +79,11 @@ const initialValues: RouteFormValues = {
 function getRouteFormValues(route?: SupplyRoute): RouteFormValues {
   if (!route) return initialValues
 
-  const category = oregonProductCategories.find((option) =>
-    option.id === route.productCategory
-    || option.name === route.productCategory
-    || option.products.some((product) => product.name === route.product),
-  )
-  const productOption = category?.products.find((product) => product.name === route.product)
   const existingItemizedCost = Object.values(route.costs).reduce((total, cost) => total + cost, 0)
 
   return {
     origin: route.origin,
     destination: route.destination,
-    productCategory: category?.id ?? '',
-    product: route.product ?? '',
-    productDescription: route.productDescription ?? '',
-    productUnit: route.productUnit ?? productOption?.defaultUnit ?? '',
-    productQuantity: route.productQuantity?.toString() ?? '',
-    productUnitCost: route.productUnitCost?.toString() ?? '',
-    productPackaging: route.productPackaging ?? '',
-    productHandling: route.productHandling ?? category?.defaultHandling ?? '',
     shipmentCost: (route.shipmentCost ?? existingItemizedCost).toString(),
     distanceMiles: route.distanceMiles > 0 ? route.distanceMiles.toString() : '',
     driveMinutes: route.driveMinutes > 0 ? route.driveMinutes.toString() : '',
@@ -110,6 +104,50 @@ function getRouteFormValues(route?: SupplyRoute): RouteFormValues {
     maintenance: route.costs.maintenance.toString(),
     other: route.costs.other.toString(),
   }
+}
+
+function getProductLineValues(route?: SupplyRoute): ProductLineValues[] {
+  if (!route) return [createBlankProductLine()]
+
+  const savedProducts: ShipmentProduct[] = route.products?.length
+    ? route.products
+    : route.product
+      ? [{
+        id: `${route.id}-legacy-product`,
+        category: route.productCategory ?? '',
+        product: route.product,
+        description: route.productDescription ?? '',
+        unit: route.productUnit ?? '',
+        quantity: route.productQuantity ?? 0,
+        unitCost: route.productUnitCost ?? 0,
+        totalCost: route.productQuantity !== undefined && route.productUnitCost !== undefined
+          ? route.productQuantity * route.productUnitCost
+          : route.costs.goods,
+        packaging: route.productPackaging ?? '',
+        handling: route.productHandling ?? '',
+      }]
+      : []
+
+  if (!savedProducts.length) return [createBlankProductLine()]
+
+  return savedProducts.map((product) => {
+    const category = oregonProductCategories.find((option) =>
+      option.id === product.category
+      || option.name === product.category
+      || option.products.some((optionProduct) => optionProduct.name === product.product),
+    )
+
+    return {
+      categoryId: category?.id ?? '',
+      product: product.product,
+      description: product.description,
+      unit: product.unit || 'lb',
+      quantity: product.quantity > 0 ? String(product.quantity) : product.totalCost > 0 ? '1' : '',
+      unitCost: product.unitCost > 0 ? String(product.unitCost) : product.totalCost > 0 ? String(product.totalCost) : '',
+      packaging: product.packaging,
+      handling: product.handling,
+    }
+  })
 }
 
 function getRoutePreview(route?: SupplyRoute): RoutePreview | null {
@@ -142,53 +180,67 @@ function currentTimestamp() {
 interface CreateRoutePageProps {
   accessToken: string
   initialRoute?: SupplyRoute
+  onBack: () => void
   onCancel: () => void
   onSave: (route: SupplyRoute) => void
 }
 
-function CreateRoutePage({ accessToken, initialRoute, onCancel, onSave }: CreateRoutePageProps) {
+function CreateRoutePage({ accessToken, initialRoute, onBack, onCancel, onSave }: CreateRoutePageProps) {
   const [values, setValues] = useState<RouteFormValues>(() => getRouteFormValues(initialRoute))
+  const [products, setProducts] = useState<ProductLineValues[]>(() => getProductLineValues(initialRoute))
   const [routePreview, setRoutePreview] = useState<RoutePreview | null>(() => getRoutePreview(initialRoute))
   const [showDetails, setShowDetails] = useState(Boolean(initialRoute))
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [message, setMessage] = useState('')
   const [productCostEdited, setProductCostEdited] = useState(false)
-  const selectedCategory = oregonProductCategories.find((category) => category.id === values.productCategory)
-  const selectedProduct = selectedCategory?.products.find((product) => product.name === values.product)
-  const productTotalCost = numberValue(values.productQuantity) * numberValue(values.productUnitCost)
+  const productTotalCost = products.reduce((total, product) =>
+    total + numberValue(product.quantity) * numberValue(product.unitCost),
+    0,
+  )
 
   const update = (field: keyof RouteFormValues, value: string) => {
     setValues((current) => ({ ...current, [field]: value }))
-    if (field === 'productCategory' || field === 'product' || field === 'productQuantity' || field === 'productUnitCost') {
-      setProductCostEdited(true)
-    }
   }
 
-  const updateProductCategory = (categoryId: string) => {
+  const updateProductLine = (index: number, changes: Partial<ProductLineValues>, affectsCost = false) => {
+    setProducts((current) => current.map((product, productIndex) =>
+      productIndex === index ? { ...product, ...changes } : product,
+    ))
+    if (affectsCost) setProductCostEdited(true)
+  }
+
+  const updateProductCategory = (index: number, categoryId: string) => {
     const category = oregonProductCategories.find((option) => option.id === categoryId)
-    setProductCostEdited(true)
-    setValues((current) => ({
-      ...current,
-      productCategory: categoryId,
+    updateProductLine(index, {
+      categoryId,
       product: '',
-      productDescription: '',
-      productUnit: '',
-      productUnitCost: '',
-      productPackaging: '',
-      productHandling: category?.defaultHandling ?? '',
-    }))
+      description: '',
+      unit: '',
+      unitCost: '',
+      packaging: '',
+      handling: category?.defaultHandling ?? '',
+    }, true)
   }
 
-  const updateProduct = (productName: string) => {
+  const updateProduct = (index: number, productName: string) => {
+    const selectedCategory = oregonProductCategories.find((category) => category.id === products[index]?.categoryId)
     const product = selectedCategory?.products.find((option) => option.name === productName)
-    setProductCostEdited(true)
-    setValues((current) => ({
-      ...current,
+    updateProductLine(index, {
       product: productName,
-      productUnit: product?.defaultUnit ?? '',
-      productUnitCost: product ? String(product.suggestedUnitCost) : '',
-      productPackaging: '',
-    }))
+      unit: product?.defaultUnit ?? '',
+      unitCost: product ? String(product.suggestedUnitCost) : '',
+      packaging: '',
+    }, true)
+  }
+
+  const addProductLine = () => {
+    setProducts((current) => [...current, createBlankProductLine()])
+    setProductCostEdited(true)
+  }
+
+  const removeProductLine = (index: number) => {
+    setProducts((current) => current.filter((_, productIndex) => productIndex !== index))
+    setProductCostEdited(true)
   }
 
   const updateLocation = (field: 'origin' | 'destination', value: string) => {
@@ -230,9 +282,30 @@ function CreateRoutePage({ accessToken, initialRoute, onCancel, onSave }: Create
     const mpg = numberValue(values.mpg)
     const driveRate = numberValue(values.driveRate)
     const loadRate = numberValue(values.loadRate)
-    const productQuantity = numberValue(values.productQuantity)
-    const productUnitCost = numberValue(values.productUnitCost)
     const enteredRevenue = numberValue(values.enteredRevenue)
+    const routeId = initialRoute?.id ?? createRouteId()
+    const shipmentProducts: ShipmentProduct[] = products
+      .filter((product) => product.categoryId || product.product || product.description || product.quantity || product.unitCost)
+      .map((product, index) => {
+        const category = oregonProductCategories.find((option) => option.id === product.categoryId)
+        const quantity = numberValue(product.quantity)
+        const unitCost = numberValue(product.unitCost)
+
+        return {
+          id: initialRoute?.products?.[index]?.id ?? `${routeId}-product-${index + 1}`,
+          category: category?.name ?? 'Other / custom',
+          product: product.product.trim() || 'Unspecified product',
+          description: product.description.trim(),
+          quantity,
+          unit: product.unit || 'item',
+          unitCost,
+          totalCost: quantity * unitCost,
+          packaging: product.packaging,
+          handling: product.handling,
+        }
+      })
+    const productTotalCost = shipmentProducts.reduce((total, product) => total + product.totalCost, 0)
+    const firstProduct = shipmentProducts[0]
     const costs = {
       driverDrive: (driveMinutes / 60) * driveRate,
       driverLoad: (loadMinutes / 60) * loadRate,
@@ -250,7 +323,7 @@ function CreateRoutePage({ accessToken, initialRoute, onCancel, onSave }: Create
     const destinationUnchanged = initialRoute?.destination === values.destination
 
     onSave({
-      id: initialRoute?.id ?? createRouteId(),
+      id: routeId,
       createdAt: initialRoute?.createdAt ?? currentTimestamp(),
       source: initialRoute?.source ?? 'user',
       farm: originUnchanged ? initialRoute.farm : firstPlace || values.origin,
@@ -277,14 +350,15 @@ function CreateRoutePage({ accessToken, initialRoute, onCancel, onSave }: Create
       enteredRevenue,
       calculatedRevenue: enteredRevenue,
       shipmentCost: numberValue(values.shipmentCost),
-      productCategory: selectedCategory?.name ?? '',
-      product: values.product,
-      productDescription: values.productDescription.trim(),
-      productUnit: values.productUnit,
-      productQuantity,
-      productUnitCost,
-      productPackaging: values.productPackaging,
-      productHandling: values.productHandling,
+      products: shipmentProducts,
+      productCategory: firstProduct?.category ?? '',
+      product: firstProduct?.product ?? '',
+      productDescription: firstProduct?.description ?? '',
+      productUnit: firstProduct?.unit ?? '',
+      productQuantity: firstProduct?.quantity,
+      productUnitCost: firstProduct?.unitCost,
+      productPackaging: firstProduct?.packaging ?? '',
+      productHandling: firstProduct?.handling ?? '',
       routeGeometry: routePreview?.coordinates ?? initialRoute?.routeGeometry,
       originCoordinates: routePreview?.originCoordinates ?? initialRoute?.originCoordinates,
       destinationCoordinates: routePreview?.destinationCoordinates ?? initialRoute?.destinationCoordinates,
@@ -294,7 +368,10 @@ function CreateRoutePage({ accessToken, initialRoute, onCancel, onSave }: Create
 
   return (
     <section className="route-create-page" aria-labelledby="create-route-title">
-      <button className="back-button" type="button" onClick={onCancel}>Back to Main Page</button>
+      <div className="route-create-back-actions">
+        <button className="back-button" type="button" onClick={onCancel}>Back to Main Page</button>
+        {initialRoute && <button className="back-button back-button-secondary" type="button" onClick={onBack}>Back</button>}
+      </div>
       <header className="create-heading">
         <div>
           <p className="eyebrow">ROUTE PLANNING <span>/</span> NEW ROUTE</p>
@@ -368,60 +445,88 @@ function CreateRoutePage({ accessToken, initialRoute, onCancel, onSave }: Create
 
             {showDetails && (
               <div className="advanced-form-fields">
-                <fieldset className="advanced-group">
-                  <legend>Product details</legend>
-                  <div className="form-field-row two-fields">
-                    <label className="form-field">
-                      <span>Product category</span>
-                      <select value={values.productCategory} onChange={(event) => updateProductCategory(event.target.value)}>
-                        <option value="">Select a category</option>
-                        {oregonProductCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                      </select>
-                    </label>
-                    <label className="form-field">
-                      <span>Product type</span>
-                      <select value={values.product} disabled={!selectedCategory} onChange={(event) => updateProduct(event.target.value)}>
-                        <option value="">{selectedCategory ? 'Select a product' : 'Select a category first'}</option>
-                        {selectedCategory?.products.map((product) => <option key={product.id} value={product.name}>{product.name}</option>)}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="form-field-row">
-                    <TextField label="Variety, grade, or lot notes" value={values.productDescription} onChange={(value) => update('productDescription', value)} placeholder="Cultivar, grade, lot, or other specifics" />
-                  </div>
-                  <div className="form-field-row three-fields">
-                    <NumberField label="Quantity" value={values.productQuantity} onChange={(value) => update('productQuantity', value)} />
-                    <NumberField label={`Cost per ${values.productUnit || 'unit'} ($)`} value={values.productUnitCost} onChange={(value) => update('productUnitCost', value)} />
-                    <label className="form-field">
-                      <span>Unit</span>
-                      <select value={values.productUnit} disabled={!selectedProduct} onChange={(event) => update('productUnit', event.target.value)}>
-                        {selectedProduct?.units.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="form-field-row two-fields">
-                    <label className="form-field">
-                      <span>Packaging</span>
-                      <select value={values.productPackaging} disabled={!selectedCategory} onChange={(event) => update('productPackaging', event.target.value)}>
-                        <option value="">Select packaging</option>
-                        {selectedCategory?.packagingOptions.map((packaging) => <option key={packaging} value={packaging}>{packaging}</option>)}
-                      </select>
-                    </label>
-                    <label className="form-field">
-                      <span>Handling profile</span>
-                      <select value={values.productHandling} disabled={!selectedCategory} onChange={(event) => update('productHandling', event.target.value)}>
-                        <option value="">Select handling</option>
-                        {selectedCategory?.handlingOptions.map((handling) => <option key={handling} value={handling}>{handling}</option>)}
-                      </select>
-                    </label>
-                  </div>
+                <section className="product-lines-section" aria-labelledby="product-lines-title">
+                  <header className="product-lines-heading">
+                    <div>
+                      <h3 id="product-lines-title">Products on this route</h3>
+                      <p>Build a mixed load with separate quantities, costs, and handling.</p>
+                    </div>
+                    <strong className="product-total numeric">{currency.format(productTotalCost)}</strong>
+                  </header>
                   <p className="form-helper">Suggested unit costs and handling profiles are synthetic planning defaults. Verify and edit them for each shipment.</p>
-                  {values.productQuantity !== '' && values.productUnitCost !== '' && (
-                    <p className="form-helper product-cost-preview">
-                      Estimated product cost: <strong>{currency.format(productTotalCost)}</strong>
-                    </p>
-                  )}
-                </fieldset>
+
+                  {products.map((productLine, index) => {
+                    const category = oregonProductCategories.find((option) => option.id === productLine.categoryId)
+                    const selectedProduct = category?.products.find((option) => option.name === productLine.product)
+                    const lineTotal = numberValue(productLine.quantity) * numberValue(productLine.unitCost)
+
+                    return (
+                      <fieldset className="advanced-group product-line" key={index}>
+                        <legend>Product {index + 1}</legend>
+                        {products.length > 1 && (
+                          <button className="product-remove-button" type="button" onClick={() => removeProductLine(index)}>
+                            Remove product
+                          </button>
+                        )}
+                        <div className="form-field-row two-fields">
+                          <label className="form-field">
+                            <span>Category</span>
+                            <select value={productLine.categoryId} onChange={(event) => updateProductCategory(index, event.target.value)}>
+                              <option value="">Select a category</option>
+                              {oregonProductCategories.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                            </select>
+                          </label>
+                          <label className="form-field">
+                            <span>Product</span>
+                            <select value={productLine.product} disabled={!category} onChange={(event) => updateProduct(index, event.target.value)}>
+                              <option value="">{category ? 'Select a product' : 'Select a category first'}</option>
+                              {category?.products.map((option) => <option key={option.id} value={option.name}>{option.name}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="form-field-row">
+                          <TextField
+                            label="Variety, grade, or lot notes"
+                            value={productLine.description}
+                            onChange={(value) => updateProductLine(index, { description: value })}
+                            placeholder="Cultivar, grade, lot, or exact product"
+                          />
+                        </div>
+                        <div className="form-field-row three-fields">
+                          <NumberField label="Quantity" value={productLine.quantity} onChange={(value) => updateProductLine(index, { quantity: value }, true)} />
+                          <NumberField label={`Cost per ${productLine.unit || 'unit'} ($)`} value={productLine.unitCost} onChange={(value) => updateProductLine(index, { unitCost: value }, true)} />
+                          <label className="form-field">
+                            <span>Unit</span>
+                            <select value={productLine.unit} disabled={!selectedProduct} onChange={(event) => updateProductLine(index, { unit: event.target.value }, true)}>
+                              {selectedProduct?.units.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="form-field-row two-fields">
+                          <label className="form-field">
+                            <span>Packaging</span>
+                            <select value={productLine.packaging} disabled={!category} onChange={(event) => updateProductLine(index, { packaging: event.target.value })}>
+                              <option value="">Select packaging</option>
+                              {category?.packagingOptions.map((packaging) => <option key={packaging} value={packaging}>{packaging}</option>)}
+                            </select>
+                          </label>
+                          <label className="form-field">
+                            <span>Handling profile</span>
+                            <select value={productLine.handling} disabled={!category} onChange={(event) => updateProductLine(index, { handling: event.target.value })}>
+                              <option value="">Select handling</option>
+                              {category?.handlingOptions.map((handling) => <option key={handling} value={handling}>{handling}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                        <p className="product-line-total">Product line total: <strong className="numeric">{currency.format(lineTotal)}</strong></p>
+                      </fieldset>
+                    )
+                  })}
+
+                  <button className="secondary-button add-product-button" type="button" onClick={addProductLine}>
+                    + Add another product
+                  </button>
+                </section>
 
                 <fieldset className="advanced-group">
                   <legend>Time and rates</legend>
