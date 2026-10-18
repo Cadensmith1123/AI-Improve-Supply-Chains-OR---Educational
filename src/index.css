@@ -1,0 +1,99 @@
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Heritage Timber Brand Colors */
+  --color-walnut: #30251E;
+  --color-timber: #624737;
+  --color-leather: #AD805B;
+  --color-sand: #D7C5AC;
+  --color-ivory: #F3EADF;
+
+  /* Backgrounds */
+  --bg-page: #F3EADF;
+  --bg-card: #FFFAF3;
+  --bg-sidebar: #30251E;
+  --bg-input: #FFFAF3;
+
+  /* Text */
+  --text-primary: #30251E;
+  --text-secondary: #624737;
+  --text-muted: #756251;
+  --text-inverse: #F3EADF;
+
+  /* Buttons and Borders */
+  --button-primary: #624737;
+  --button-primary-hover: #483226;
+  --button-text: #FFFFFF;
+  --border-default: #D7C5AC;
+  --focus-ring: #624737;
+
+  /* Analytics */
+  --chart-revenue: #546B50;
+  --chart-cost: #AD805B;
+  --chart-labor: #624737;
+  --chart-fuel: #C39149;
+  --chart-other: #8B8174;
+
+  /* Status */
+  --color-success: #546B50;
+  --color-warning: #9B572F;
+  --color-danger: #A04439;
+
+  /* Typography */
+  --font-display: 'DM Sans', Arial, sans-serif;
+  --font-body: 'DM Sans', Arial, sans-serif;
+
+  /* Borders and Shadows */
+  --radius-card: 14px;
+  --radius-control: 8px;
+  --shadow-card: 0 4px 18px rgba(48, 37, 30, 0.06);
+
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--bg-page);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg-page);
+}
+
+h1, h2, h3, h4, p {
+  margin-top: 0;
+}
+
+h1, h2 {
+  font-family: var(--font-display);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.numeric {
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
