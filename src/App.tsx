@@ -344,7 +344,7 @@ function App() {
                 </p>
               </div>
               <button className="primary-button directory-create-button" type="button" onClick={() => setActiveView('create')}>
-                <span aria-hidden="true">+</span> New route
+                <span aria-hidden="true">+</span> New Route
               </button>
             </header>
 
