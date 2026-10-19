@@ -422,7 +422,7 @@ function App() {
           <div className="notice-panel">
             <span className="notice-rule" aria-hidden="true" />
             <h2 id="notice-title">
-              This project uses synthetic data and is solely uses as a mock-up and for educational purposes
+              This project uses synthetic data and is solely used for educational purposes.
             </h2>
             <span className="notice-instruction" id="notice-instruction">Click anywhere to continue</span>
           </div>
